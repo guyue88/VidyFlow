@@ -134,7 +134,7 @@ ipcMain.handle(
         const args = [
           options.url,
           '-o',
-          path.join(resolvedPath, '%(title)s.%(ext)s'),
+          path.join(resolvedPath, 'XDOWN_%(title)s.%(ext)s'),
           '--format',
           formatSelector,
           '--merge-output-format',
@@ -145,7 +145,7 @@ ipcMain.handle(
           // 确保ffmpeg可用于合并
           '--prefer-ffmpeg',
           // 如果需要合并，保留临时文件直到合并完成
-          '--keep-video',
+          // '--keep-video',
         ];
 
         console.log('yt-dlp args:', args);
@@ -154,6 +154,9 @@ ipcMain.handle(
         let output = '';
         let error = '';
         let currentStage = 'preparing';
+        let videoCompleted = false;
+        let audioCompleted = false;
+        let overallProgress = 0;
 
         ytDlp.stdout.on('data', (data: Buffer) => {
           const dataStr = data.toString();
@@ -168,31 +171,95 @@ ipcMain.handle(
             if (line.includes('[download] Destination:')) {
               if (line.includes('audio')) {
                 currentStage = 'audio';
+                console.log('🎵 开始下载音频');
               } else {
                 currentStage = 'video';
+                console.log('🎬 开始下载视频');
               }
             } else if (
               line.includes('[Merger]') ||
               line.includes('Merging formats')
             ) {
               currentStage = 'merging';
+              console.log('🔄 开始合并音视频');
             } else if (line.includes('[ffmpeg]')) {
               currentStage = 'processing';
+              console.log('⚙️ 后处理中');
             }
 
-            // 解析进度信息 - 匹配实际的yt-dlp输出格式
-            // 格式: [download]  61.6% of    4.25MiB at   44.03KiB/s ETA 00:38
-            const progressMatch = line.match(
-              /\[download\]\s+(\d+\.?\d*)%\s+of\s+([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+)/
+            // 解析进度信息 - 支持多种yt-dlp输出格式
+            let progressMatch = null;
+            let percentage = 0;
+            let totalSize = 0;
+            let totalUnit = '';
+            let speed = 0;
+            let speedUnit = '';
+            let eta = '';
+
+            // 格式1: [download]   0.1% of ~  26.99MiB at    8.65KiB/s ETA 20:40 (frag 1/27)
+            progressMatch = line.match(
+              /\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)(?:\s+\(frag\s+\d+\/\d+\))?/
             );
 
             if (progressMatch) {
-              const percentage = parseFloat(progressMatch[1]);
-              const totalSize = parseFloat(progressMatch[2]);
-              const totalUnit = progressMatch[3];
-              const speed = parseFloat(progressMatch[4]);
-              const speedUnit = progressMatch[5];
-              const eta = progressMatch[6];
+              percentage = parseFloat(progressMatch[1]);
+              totalSize = parseFloat(progressMatch[2]);
+              totalUnit = progressMatch[3];
+              speed = parseFloat(progressMatch[4]);
+              speedUnit = progressMatch[5];
+              eta = progressMatch[6];
+            } else {
+              // 格式2: [download]  68.4% of    8.04MiB at   41.60KiB/s ETA 01:02
+              progressMatch = line.match(
+                /\[download\]\s+(\d+\.?\d*)%\s+of\s+([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)/
+              );
+
+              if (progressMatch) {
+                percentage = parseFloat(progressMatch[1]);
+                totalSize = parseFloat(progressMatch[2]);
+                totalUnit = progressMatch[3];
+                speed = parseFloat(progressMatch[4]);
+                speedUnit = progressMatch[5];
+                eta = progressMatch[6];
+              } else {
+                // 格式3: [download] 100% of 4.25MiB in 00:01:37 at 44.75KiB/s
+                progressMatch = line.match(
+                  /\[download\]\s+100%\s+of\s+([\d.]+)(\w+)\s+in\s+(\d+:\d+:\d+|\d+:\d+)\s+at\s+([\d.]+)(\w+\/s)/
+                );
+
+                if (progressMatch) {
+                  percentage = 100;
+                  totalSize = parseFloat(progressMatch[1]);
+                  totalUnit = progressMatch[2];
+                  speed = parseFloat(progressMatch[4]);
+                  speedUnit = progressMatch[5];
+                  eta = '00:00';
+                }
+              }
+            }
+
+            if (progressMatch && percentage !== undefined) {
+              // 计算整体进度
+              if (currentStage === 'video') {
+                // 视频下载占总进度的60%
+                overallProgress = (percentage / 100) * 60;
+                if (percentage === 100) {
+                  videoCompleted = true;
+                  console.log('✅ 视频下载完成');
+                }
+              } else if (currentStage === 'audio') {
+                // 音频下载占总进度的30% (60% + 30% = 90%)
+                const audioProgress = (percentage / 100) * 30;
+                overallProgress = 60 + audioProgress;
+                if (percentage === 100) {
+                  audioCompleted = true;
+                  console.log('✅ 音频下载完成');
+                }
+              } else if (currentStage === 'merging') {
+                // 合并占总进度的10% (90% + 10% = 100%)
+                overallProgress = 90 + 10;
+                eta = '合并中...';
+              }
 
               // 转换文件大小为字节
               const sizeMultipliers: { [key: string]: number } = {
@@ -200,9 +267,11 @@ ipcMain.handle(
                 KiB: 1024,
                 MiB: 1024 * 1024,
                 GiB: 1024 * 1024 * 1024,
+                TiB: 1024 * 1024 * 1024 * 1024,
                 KB: 1000,
                 MB: 1000 * 1000,
                 GB: 1000 * 1000 * 1000,
+                TB: 1000 * 1000 * 1000 * 1000,
               };
 
               const totalBytes = totalSize * (sizeMultipliers[totalUnit] || 1);
@@ -216,69 +285,80 @@ ipcMain.handle(
                 'KiB/s': 1024,
                 'MiB/s': 1024 * 1024,
                 'GiB/s': 1024 * 1024 * 1024,
+                'TiB/s': 1024 * 1024 * 1024 * 1024,
                 'KB/s': 1000,
                 'MB/s': 1000 * 1000,
                 'GB/s': 1000 * 1000 * 1000,
+                'TB/s': 1000 * 1000 * 1000 * 1000,
               };
 
               const speedBytesPerSec =
                 speed * (speedMultipliers[speedUnit] || 1);
 
-              // 发送详细的进度信息
-              event.sender.send('download-progress', {
+              // 格式化速度显示
+              const formatSpeed = (bytesPerSec: number): string => {
+                if (bytesPerSec >= 1024 * 1024) {
+                  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+                } else if (bytesPerSec >= 1024) {
+                  return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+                } else {
+                  return `${bytesPerSec.toFixed(0)} B/s`;
+                }
+              };
+
+              // 获取阶段显示名称
+              const getStageDisplayName = (stage: string): string => {
+                const stageNames: { [key: string]: string } = {
+                  preparing: '准备中',
+                  video: '下载视频',
+                  audio: '下载音频',
+                  merging: '合并文件',
+                  processing: '后处理',
+                };
+                return stageNames[stage] || stage;
+              };
+
+              const progressData = {
                 raw: line,
-                stage: currentStage,
+                stage: getStageDisplayName(currentStage),
                 timestamp: Date.now(),
                 downloaded: downloadedBytes,
                 total: totalBytes,
-                percentage: percentage,
-                speed: `${(speedBytesPerSec / 1024).toFixed(1)} KB/s`,
-                eta: eta,
+                percentage: Math.min(overallProgress, 100), // 使用计算的整体进度
+                speed: formatSpeed(speedBytesPerSec),
+                eta: currentStage === 'merging' ? '合并中...' : eta,
+                completed: overallProgress >= 100,
+              };
+
+              console.log('📤 发送整体进度:', {
+                stage: currentStage,
+                stageProgress: percentage,
+                overallProgress: overallProgress.toFixed(1),
+                videoCompleted,
+                audioCompleted,
               });
+
+              // 发送详细的进度信息
+              event.sender.send('download-progress', progressData);
             } else {
-              // 尝试匹配完成信息: [download] 100% of 4.25MiB in 00:01:37 at 44.75KiB/s
-              const completeMatch = line.match(
-                /\[download\]\s+100%\s+of\s+([\d.]+)(\w+)\s+in\s+(\d+:\d+:\d+|\d+:\d+)\s+at\s+([\d.]+)(\w+\/s)/
-              );
-
-              if (completeMatch) {
-                const totalSize = parseFloat(completeMatch[1]);
-                const totalUnit = completeMatch[2];
-                const duration = completeMatch[3];
-                const avgSpeed = parseFloat(completeMatch[4]);
-                const speedUnit = completeMatch[5];
-
-                const sizeMultipliers: { [key: string]: number } = {
-                  B: 1,
-                  KiB: 1024,
-                  MiB: 1024 * 1024,
-                  GiB: 1024 * 1024 * 1024,
-                  KB: 1000,
-                  MB: 1000 * 1000,
-                  GB: 1000 * 1000 * 1000,
+              // 处理合并阶段
+              if (
+                line.includes('[Merger]') &&
+                videoCompleted &&
+                audioCompleted
+              ) {
+                const progressData = {
+                  raw: line,
+                  stage: '合并文件',
+                  timestamp: Date.now(),
+                  downloaded: 0,
+                  total: 0,
+                  percentage: 95,
+                  speed: '',
+                  eta: '合并中...',
+                  completed: false,
                 };
-
-                const totalBytes =
-                  totalSize * (sizeMultipliers[totalUnit] || 1);
-
-                event.sender.send('download-progress', {
-                  raw: line,
-                  stage: currentStage,
-                  timestamp: Date.now(),
-                  downloaded: totalBytes,
-                  total: totalBytes,
-                  percentage: 100,
-                  speed: `${avgSpeed} ${speedUnit}`,
-                  eta: '00:00',
-                  completed: true,
-                });
-              } else {
-                // 发送原始行信息
-                event.sender.send('download-progress', {
-                  raw: line,
-                  stage: currentStage,
-                  timestamp: Date.now(),
-                });
+                event.sender.send('download-progress', progressData);
               }
             }
           }
@@ -294,6 +374,19 @@ ipcMain.handle(
         ytDlp.on('close', (code: number) => {
           console.log('yt-dlp exit code:', code);
           if (code === 0) {
+            // 发送完成进度
+            event.sender.send('download-progress', {
+              raw: 'Download completed',
+              stage: '下载完成',
+              timestamp: Date.now(),
+              downloaded: 0,
+              total: 0,
+              percentage: 100,
+              speed: '',
+              eta: '00:00',
+              completed: true,
+            });
+
             resolve({ success: true, output });
           } else {
             resolve({

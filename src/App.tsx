@@ -31,7 +31,6 @@ interface DownloadProgress {
   speed: string;
   eta: string;
   stage: string;
-  stageProgress: { [key: string]: number };
 }
 
 interface HistoryItem {
@@ -74,17 +73,20 @@ const App: React.FC = () => {
             completed?: boolean;
           }
     ) => {
+      console.log('Received progress data:', progressData);
+
       // 处理新的进度数据格式
       if (typeof progressData === 'string') {
-        // 兼容旧格式
+        // 兼容旧格式 - 尝试解析字符串
         parseProgressString(progressData);
-      } else if (progressData && progressData.raw) {
-        // 新格式
-        parseProgressData(progressData);
+      } else if (progressData && typeof progressData === 'object') {
+        // 新格式 - 直接使用解析好的数据
+        updateProgressFromData(progressData);
       }
     };
 
     const parseProgressString = (data: string) => {
+      // 简单的字符串解析作为后备
       if (data.includes('%')) {
         const progressMatch = data.match(/(\d+\.?\d*)%/);
         const speedMatch = data.match(/(\d+\.?\d*\w+\/s)/);
@@ -106,7 +108,7 @@ const App: React.FC = () => {
       }
     };
 
-    const parseProgressData = (progressData: {
+    const updateProgressFromData = (progressData: {
       raw: string;
       stage: string;
       timestamp: number;
@@ -117,94 +119,59 @@ const App: React.FC = () => {
       eta?: string;
       completed?: boolean;
     }) => {
-      const {
-        raw,
-        stage,
-        downloaded,
-        total,
-        percentage,
-        speed,
-        eta,
-        completed,
-      } = progressData;
+      console.log('updateProgressFromData called with:', progressData);
+
+      const { stage, downloaded, total, percentage, speed, eta, completed } =
+        progressData;
 
       setDownloadProgress(prev => {
-        if (!prev) return null;
+        if (!prev) {
+          console.log('No previous progress state, skipping update');
+          return null;
+        }
 
+        console.log('Updating progress state...');
         const newProgress = { ...prev };
+
+        // 更新阶段
         newProgress.stage = stage;
 
-        // 如果主进程已经解析了数据，直接使用
+        // 如果有解析好的数据，直接使用
         if (downloaded !== undefined && total !== undefined) {
+          console.log('Using parsed data:', { downloaded, total, percentage });
           newProgress.downloaded = downloaded;
           newProgress.total = total;
+        }
 
-          // 使用百分比或计算百分比
-          const currentPercentage =
-            percentage !== undefined
-              ? percentage
-              : total > 0
-                ? (downloaded / total) * 100
-                : 0;
+        // 使用yt-dlp提供的百分比，这是最准确的
+        if (percentage !== undefined) {
+          console.log('Using percentage from yt-dlp:', percentage);
+          newProgress.progress = percentage;
 
-          // 更新阶段进度
-          newProgress.stageProgress[stage] = currentPercentage;
-
-          // 如果是单文件下载（没有音视频分离），直接使用百分比
-          if (stage === 'video' && !raw.includes('audio')) {
-            newProgress.progress = currentPercentage;
-          } else {
-            // 计算总体进度（多阶段下载）
-            const stageWeights = {
-              preparing: 5,
-              video: 45,
-              audio: 35,
-              merging: 10,
-              processing: 5,
-            };
-
-            let totalProgress = 0;
-            let completedWeight = 0;
-
-            const stageOrder = [
-              'preparing',
-              'video',
-              'audio',
-              'merging',
-              'processing',
-            ];
-            const currentStageIndex = stageOrder.indexOf(stage);
-
-            // 计算已完成阶段的权重
-            for (let i = 0; i < currentStageIndex; i++) {
-              completedWeight +=
-                stageWeights[stageOrder[i] as keyof typeof stageWeights] || 0;
-            }
-
-            // 计算当前阶段的进度
-            const currentStageWeight =
-              stageWeights[stage as keyof typeof stageWeights] || 0;
-            totalProgress =
-              completedWeight + (currentPercentage * currentStageWeight) / 100;
-
-            newProgress.progress = Math.min(totalProgress, 100);
+          // 如果是完成状态，确保进度为100%
+          if (completed) {
+            newProgress.progress = 100;
           }
         }
 
         // 更新速度和ETA
         if (speed) {
+          console.log('Updating speed:', speed);
           newProgress.speed = speed;
         }
         if (eta) {
+          console.log('Updating ETA:', eta);
           newProgress.eta = eta;
         }
 
         // 如果下载完成
         if (completed) {
+          console.log('Download completed');
           newProgress.progress = 100;
           newProgress.eta = '00:00';
         }
 
+        console.log('Final progress state:', newProgress);
         return newProgress;
       });
     };
@@ -320,7 +287,6 @@ const App: React.FC = () => {
       speed: '0 MB/s',
       eta: '计算中...',
       stage: 'initial',
-      stageProgress: {},
     });
 
     try {
@@ -601,29 +567,6 @@ const App: React.FC = () => {
                   </div>
                 </div>
               </div>
-
-              {/* 阶段进度详情 */}
-              {Object.keys(downloadProgress.stageProgress).length > 0 && (
-                <div className="mt-4 pt-4 border-t border-slate-200">
-                  <div className="text-xs text-slate-500 mb-2">阶段详情:</div>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {Object.entries(downloadProgress.stageProgress).map(
-                      ([stage, progress]) => (
-                        <div key={stage} className="flex justify-between">
-                          <span className="text-slate-500">
-                            {getStageDisplayName(stage)}:
-                          </span>
-                          <span
-                            className={`font-medium ${stage === downloadProgress.stage ? 'text-blue-600' : 'text-green-600'}`}
-                          >
-                            {progress.toFixed(1)}%
-                          </span>
-                        </div>
-                      )
-                    )}
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         )}

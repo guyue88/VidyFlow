@@ -23,7 +23,23 @@ interface ElectronAPI {
     | { error: string }
   >;
   openFolder: (folderPath: string) => Promise<void>;
-  onDownloadProgress: (callback: (data: string) => void) => void;
+  onDownloadProgress: (
+    callback: (
+      data:
+        | string
+        | {
+            raw: string;
+            stage: string;
+            timestamp: number;
+            downloaded?: number;
+            total?: number;
+            percentage?: number;
+            speed?: string;
+            eta?: string;
+            completed?: boolean;
+          }
+    ) => void
+  ) => void;
   onDownloadError: (callback: (error: string) => void) => void;
   removeAllListeners: (channel: string) => void;
 }
