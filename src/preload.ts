@@ -3,63 +3,44 @@
 
 import { contextBridge, ipcRenderer } from 'electron';
 
-// 定义API接口
-interface ElectronAPI {
-  selectDownloadPath: () => Promise<string | null>;
-  getDefaultDownloadPath: () => Promise<string>;
+// 暴露API到渲染进程
+contextBridge.exposeInMainWorld('electronAPI', {
+  // 文件夹选择
+  selectDownloadFolder: () => ipcRenderer.invoke('select-download-folder'),
+
+  // 视频下载
   downloadVideo: (options: {
     url: string;
     outputPath: string;
     quality: string;
-  }) => Promise<{ success: boolean; output?: string; error?: string }>;
-  getVideoInfo: (url: string) => Promise<
-    | {
-        title?: string;
-        duration?: number;
-        thumbnail?: string;
-        uploader?: string;
-        formats?: Array<{ height?: number; [key: string]: unknown }>;
-      }
-    | { error: string }
-  >;
-  openFolder: (folderPath: string) => Promise<void>;
-  onDownloadProgress: (
-    callback: (
-      data:
-        | string
-        | {
-            raw: string;
-            stage: string;
-            timestamp: number;
-            downloaded?: number;
-            total?: number;
-            percentage?: number;
-            speed?: string;
-            eta?: string;
-            completed?: boolean;
-          }
-    ) => void
-  ) => void;
-  onDownloadError: (callback: (error: string) => void) => void;
-  removeAllListeners: (channel: string) => void;
-}
+  }) => ipcRenderer.invoke('download-video', options),
+  getVideoInfo: (url: string) => ipcRenderer.invoke('get-video-info', url),
 
-// 暴露API到渲染进程
-const electronAPI: ElectronAPI = {
-  selectDownloadPath: () => ipcRenderer.invoke('select-download-folder'),
+  // 文件操作
+  openFolder: (path: string) => ipcRenderer.invoke('open-folder', path),
   getDefaultDownloadPath: () => ipcRenderer.invoke('get-default-download-path'),
-  downloadVideo: options => ipcRenderer.invoke('download-video', options),
-  getVideoInfo: url => ipcRenderer.invoke('get-video-info', url),
-  openFolder: folderPath => ipcRenderer.invoke('open-folder', folderPath),
-  onDownloadProgress: callback => {
-    ipcRenderer.on('download-progress', (_, data) => callback(data));
+
+  // 依赖管理
+  checkDependencies: () => ipcRenderer.invoke('check-dependencies'),
+  installDependencies: () => ipcRenderer.invoke('install-dependencies'),
+
+  // 事件监听
+  onDownloadProgress: (callback: (data: unknown) => void) => {
+    ipcRenderer.on('download-progress', (event, data) => callback(data));
   },
-  onDownloadError: callback => {
-    ipcRenderer.on('download-error', (_, error) => callback(error));
+  onDownloadError: (callback: (error: string) => void) => {
+    ipcRenderer.on('download-error', (event, error) => callback(error));
   },
-  removeAllListeners: channel => {
+  onDependencyInstallProgress: (
+    callback: (data: { dependency: string; progress: number }) => void
+  ) => {
+    ipcRenderer.on('dependency-install-progress', (event, data) =>
+      callback(data)
+    );
+  },
+
+  // 移除事件监听器
+  removeAllListeners: (channel: string) => {
     ipcRenderer.removeAllListeners(channel);
   },
-};
-
-contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+});

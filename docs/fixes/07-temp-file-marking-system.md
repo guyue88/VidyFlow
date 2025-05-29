@@ -11,18 +11,18 @@
 通过修改yt-dlp的输出文件名模板，为所有下载的文件添加特殊前缀：
 
 ```javascript
-// 修改输出文件名模板，添加XDOWN_TEMP前缀
+// 修改输出文件名模板，添加VidyFlow_TEMP前缀
 '-o',
-path.join(resolvedPath, 'XDOWN_TEMP_%(title)s.%(ext)s'),
+path.join(resolvedPath, 'VidyFlow_TEMP_%(title)s.%(ext)s'),
 ```
 
 ### 2. 文件处理流程
 
 下载完成后的处理流程：
 
-1. **识别最终文件**：查找带有`XDOWN_TEMP_`前缀且为`.mp4`格式的最终合并文件
-2. **重命名最终文件**：移除`XDOWN_TEMP_`前缀，恢复正常文件名
-3. **清理临时文件**：删除所有仍带有`XDOWN_TEMP_`前缀的文件
+1. **识别最终文件**：查找带有`VidyFlow_TEMP_`前缀且为`.mp4`格式的最终合并文件
+2. **重命名最终文件**：移除`VidyFlow_TEMP_`前缀，恢复正常文件名
+3. **清理临时文件**：删除所有仍带有`VidyFlow_TEMP_`前缀的文件
 
 ## 技术实现
 
@@ -34,7 +34,7 @@ path.join(resolvedPath, 'XDOWN_TEMP_%(title)s.%(ext)s'),
 const args = [
   options.url,
   '-o',
-  path.join(resolvedPath, 'XDOWN_TEMP_%(title)s.%(ext)s'), // 添加前缀
+  path.join(resolvedPath, 'VidyFlow_TEMP_%(title)s.%(ext)s'), // 添加前缀
   '--format',
   formatSelector,
   // ... 其他参数
@@ -44,17 +44,17 @@ const args = [
 **2. 文件处理逻辑**：
 
 ```javascript
-// 查找最终合并的文件（带XDOWN_TEMP前缀的mp4文件）
+// 查找最终合并的文件（带VidyFlow_TEMP前缀的mp4文件）
 const finalFile = files.find(
   file =>
-    file.startsWith('XDOWN_TEMP_') &&
+    file.startsWith('VidyFlow_TEMP_') &&
     file.endsWith('.mp4') &&
     !file.match(/\.f\d+\./) // 排除格式ID临时文件
 );
 
 if (finalFile) {
-  // 重命名最终文件，移除XDOWN_TEMP前缀
-  const newFileName = finalFile.replace('XDOWN_TEMP_', '');
+  // 重命名最终文件，移除VidyFlow_TEMP前缀
+  const newFileName = finalFile.replace('VidyFlow_TEMP_', '');
   const oldPath = path.join(resolvedPath, finalFile);
   const newPath = path.join(resolvedPath, newFileName);
 
@@ -62,9 +62,9 @@ if (finalFile) {
   console.log('✅ 最终文件重命名:', newFileName);
 }
 
-// 清理所有带XDOWN_TEMP标记的临时文件
+// 清理所有带VidyFlow_TEMP标记的临时文件
 for (const file of files) {
-  if (file.startsWith('XDOWN_TEMP_') && file !== finalFile) {
+  if (file.startsWith('VidyFlow_TEMP_') && file !== finalFile) {
     const fullPath = path.join(resolvedPath, file);
     await fs.remove(fullPath);
     console.log('🗑️ 已清理临时文件:', file);
@@ -93,14 +93,14 @@ if (file.match(/\.f\d+\.(mp4|m4a|webm|mkv)$/)) {
 
 ```javascript
 // 简单明确的前缀匹配
-if (file.startsWith('XDOWN_TEMP_')) {
+if (file.startsWith('VidyFlow_TEMP_')) {
   // 删除文件
 }
 ```
 
 **优势**：
 
-- ✅ **精确识别**：只删除XDown创建的临时文件
+- ✅ **精确识别**：只删除VidyFlow创建的临时文件
 - ✅ **简单可靠**：不依赖复杂的正则表达式
 - ✅ **安全性高**：不会误删其他应用的文件
 - ✅ **易于维护**：逻辑清晰，代码简洁
@@ -113,16 +113,16 @@ if (file.startsWith('XDOWN_TEMP_')) {
 1. **开始下载**：
 
    ```
-   XDOWN_TEMP_video_title.f137.mp4  (视频流)
-   XDOWN_TEMP_video_title.f140.m4a  (音频流)
+   VidyFlow_TEMP_video_title.f137.mp4  (视频流)
+   VidyFlow_TEMP_video_title.f140.m4a  (音频流)
    ```
 
 2. **合并完成**：
 
    ```
-   XDOWN_TEMP_video_title.mp4       (最终文件)
-   XDOWN_TEMP_video_title.f137.mp4  (视频临时文件)
-   XDOWN_TEMP_video_title.f140.m4a  (音频临时文件)
+   VidyFlow_TEMP_video_title.mp4       (最终文件)
+   VidyFlow_TEMP_video_title.f137.mp4  (视频临时文件)
+   VidyFlow_TEMP_video_title.f140.m4a  (音频临时文件)
    ```
 
 3. **处理完成**：
@@ -136,20 +136,20 @@ if (file.startsWith('XDOWN_TEMP_')) {
 // 1. 识别最终文件
 const finalFile = files.find(
   file =>
-    file.startsWith('XDOWN_TEMP_') &&
+    file.startsWith('VidyFlow_TEMP_') &&
     file.endsWith('.mp4') &&
     !file.match(/\.f\d+\./)
 );
 
 // 2. 重命名最终文件
 if (finalFile) {
-  const newFileName = finalFile.replace('XDOWN_TEMP_', '');
+  const newFileName = finalFile.replace('VidyFlow_TEMP_', '');
   await fs.rename(oldPath, newPath);
 }
 
 // 3. 清理所有临时文件
 for (const file of files) {
-  if (file.startsWith('XDOWN_TEMP_') && file !== finalFile) {
+  if (file.startsWith('VidyFlow_TEMP_') && file !== finalFile) {
     await fs.remove(fullPath);
   }
 }
@@ -167,7 +167,7 @@ for (const file of files) {
 2. **安全性提升**：
 
    - 不会误删用户的其他文件
-   - 只处理XDown创建的文件
+   - 只处理VidyFlow创建的文件
 
 3. **可靠性增强**：
    - 不依赖文件名格式的假设
@@ -184,7 +184,7 @@ for (const file of files) {
 
 修复后的文件处理流程：
 
-1. ✅ 所有下载文件都带有`XDOWN_TEMP_`前缀
+1. ✅ 所有下载文件都带有`VidyFlow_TEMP_`前缀
 2. ✅ 最终文件正确重命名，移除前缀
 3. ✅ 所有临时文件被准确清理
 4. ✅ 不会影响用户的其他文件

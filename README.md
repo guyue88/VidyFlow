@@ -1,8 +1,8 @@
-# XDown - 现代化视频下载器
+# VidyFlow - 现代化视频下载器
 
 一个基于 Electron + React + TypeScript 的现代化视频下载器，支持多平台视频下载，具有实时进度显示和智能音视频合并功能。
 
-![XDown Interface](https://via.placeholder.com/800x500/3B82F6/ffffff?text=XDown+Interface)
+![VidyFlow Interface](https://via.placeholder.com/800x500/3B82F6/ffffff?text=VidyFlow+Interface)
 
 ## ✨ 特性
 
@@ -39,7 +39,7 @@ choco install yt-dlp
 ```bash
 # 克隆项目
 git clone <repository-url>
-cd xdown
+cd vidyflow
 
 # 安装依赖
 yarn install
@@ -100,7 +100,7 @@ yarn run make
 ## 🏗️ 项目架构
 
 ```
-xdown/
+vidyflow/
 ├── src/
 │   ├── main.ts          # 主进程 - Electron 主要逻辑
 │   ├── preload.ts       # 预加载脚本 - 安全的 IPC 通信

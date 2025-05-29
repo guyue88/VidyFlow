@@ -14,6 +14,7 @@ import {
   Link,
   Loader2,
 } from 'lucide-react';
+import { DependencyChecker } from './components/DependencyChecker';
 
 interface VideoInfo {
   title: string;
@@ -46,6 +47,10 @@ interface HistoryItem {
 }
 
 const App: React.FC = () => {
+  // 依赖状态
+  const [dependenciesReady, setDependenciesReady] = useState(false);
+
+  // 原有状态
   const [url, setUrl] = useState('');
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [downloadPath, setDownloadPath] = useState('~/Downloads');
@@ -56,8 +61,11 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // 监听下载进度
+  // 监听下载进度 - 移到条件渲染之前
   useEffect(() => {
+    // 只有在依赖就绪时才设置监听器
+    if (!dependenciesReady) return;
+
     const handleDownloadProgress = (
       progressData:
         | string
@@ -187,10 +195,13 @@ const App: React.FC = () => {
       window.electronAPI.removeAllListeners('download-progress');
       window.electronAPI.removeAllListeners('download-error');
     };
-  }, []);
+  }, [dependenciesReady]);
 
-  // 初始化默认下载路径
+  // 初始化默认下载路径 - 移到条件渲染之前
   useEffect(() => {
+    // 只有在依赖就绪时才初始化
+    if (!dependenciesReady) return;
+
     const initializeDownloadPath = async () => {
       try {
         const defaultPath = await window.electronAPI.getDefaultDownloadPath();
@@ -202,7 +213,16 @@ const App: React.FC = () => {
     };
 
     initializeDownloadPath();
-  }, []);
+  }, [dependenciesReady]);
+
+  // 如果依赖未就绪，显示依赖检查器
+  if (!dependenciesReady) {
+    return (
+      <DependencyChecker
+        onDependenciesReady={() => setDependenciesReady(true)}
+      />
+    );
+  }
 
   // 获取视频信息
   const handleGetVideoInfo = async () => {
@@ -265,7 +285,7 @@ const App: React.FC = () => {
   // 选择下载路径
   const handleSelectPath = async () => {
     try {
-      const result = await window.electronAPI.selectDownloadPath();
+      const result = await window.electronAPI.selectDownloadFolder();
       if (result) {
         setDownloadPath(result);
       }
@@ -390,7 +410,7 @@ const App: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-800">XDown</h1>
+            <h1 className="text-2xl font-bold text-slate-800">VidyFlow</h1>
             <p className="text-sm text-slate-500 mt-1">视频下载神器</p>
           </div>
         </div>

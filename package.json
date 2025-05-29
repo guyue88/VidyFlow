@@ -1,6 +1,6 @@
 {
-  "name": "xdown",
-  "productName": "XDown",
+  "name": "vidyflow",
+  "productName": "VidyFlow",
   "version": "1.0.0",
   "description": "一个基于Electron + React + TypeScript的视频下载器，支持Facebook、Twitter、YouTube等平台",
   "main": ".vite/build/main.js",

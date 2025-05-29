@@ -145,4 +145,4 @@ const totalProgress =
 - ✅ 用户体验大幅提升
 - ✅ 通过所有TypeScript和ESLint检查
 
-现在XDown提供了专业级的下载体验，与主流下载工具相媲美！
+现在VidyFlow提供了专业级的下载体验，与主流下载工具相媲美！

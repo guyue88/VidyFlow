@@ -1,8 +1,8 @@
-# XDown 项目开发总结
+# VidyFlow 项目开发总结
 
 ## 🎯 项目概述
 
-XDown 是一个基于 Electron + React + TypeScript 的现代化视频下载器，从手动配置的项目重构为基于官方脚手架的专业级应用。
+VidyFlow 是一个基于 Electron + React + TypeScript 的现代化视频下载器，从手动配置的项目重构为基于官方脚手架的专业级应用。
 
 ### 核心特性
 

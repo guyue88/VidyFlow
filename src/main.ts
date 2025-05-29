@@ -10,6 +10,7 @@ import * as path from 'path';
 import * as os from 'os';
 import { spawn } from 'child_process';
 import squirrelStartup from 'electron-squirrel-startup';
+import { dependencyManager, DependencyStatus } from './dependency-manager';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (squirrelStartup) {
@@ -94,6 +95,42 @@ ipcMain.handle('select-download-folder', async (): Promise<string | null> => {
   return null;
 });
 
+// 依赖管理相关的IPC处理程序
+ipcMain.handle('check-dependencies', async (): Promise<DependencyStatus> => {
+  try {
+    return await dependencyManager.checkDependencies();
+  } catch (error) {
+    console.error('检查依赖失败:', error);
+    return {
+      ytDlp: { installed: false },
+      ffmpeg: { installed: false },
+    };
+  }
+});
+
+ipcMain.handle(
+  'install-dependencies',
+  async (
+    event: IpcMainInvokeEvent
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      await dependencyManager.installMissingDependencies(
+        (dependency, progress) => {
+          // 发送安装进度到渲染进程
+          event.sender.send('dependency-install-progress', {
+            dependency,
+            progress,
+          });
+        }
+      );
+      return { success: true };
+    } catch (error) {
+      console.error('安装依赖失败:', error);
+      return { success: false, error: (error as Error).message };
+    }
+  }
+);
+
 interface DownloadOptions {
   url: string;
   outputPath: string;
@@ -112,106 +149,107 @@ ipcMain.handle(
     event: IpcMainInvokeEvent,
     options: DownloadOptions
   ): Promise<DownloadResult> => {
-    return new Promise(resolve => {
-      try {
-        // 解析路径，处理 ~ 符号
-        const resolvedPath = options.outputPath.startsWith('~')
-          ? path.join(os.homedir(), options.outputPath.slice(1))
-          : options.outputPath;
+    try {
+      // 检查依赖是否可用
+      const status = await dependencyManager.checkDependencies();
+      if (!status.ytDlp.installed) {
+        return {
+          success: false,
+          error: 'yt-dlp未安装，请先安装依赖',
+        };
+      }
 
-        // 改进的格式选择器，确保音视频合并
-        let formatSelector =
-          'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
-        if (options.quality !== 'best') {
-          const height = options.quality.replace('p', '');
-          // 使用正确的格式选择器，优先选择合并格式
-          formatSelector = `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
-        }
+      // 获取yt-dlp路径
+      const ytDlpPath = await dependencyManager.getYtDlpPath();
 
-        console.log('Quality:', options.quality);
-        console.log('Format selector:', formatSelector);
+      return new Promise(resolve => {
+        try {
+          // 解析路径，处理 ~ 符号
+          const resolvedPath = options.outputPath.startsWith('~')
+            ? path.join(os.homedir(), options.outputPath.slice(1))
+            : options.outputPath;
 
-        const args = [
-          options.url,
-          '-o',
-          path.join(resolvedPath, 'XDOWN_%(title)s.%(ext)s'),
-          '--format',
-          formatSelector,
-          '--merge-output-format',
-          'mp4',
-          '--no-playlist',
-          '--progress',
-          '--newline',
-          // 确保ffmpeg可用于合并
-          '--prefer-ffmpeg',
-          // 如果需要合并，保留临时文件直到合并完成
-          // '--keep-video',
-        ];
+          // 改进的格式选择器，确保音视频合并
+          let formatSelector =
+            'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best';
+          if (options.quality !== 'best') {
+            const height = options.quality.replace('p', '');
+            // 使用正确的格式选择器，优先选择合并格式
+            formatSelector = `bestvideo[height<=${height}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
+          }
 
-        console.log('yt-dlp args:', args);
-        const ytDlp = spawn('yt-dlp', args);
+          console.log('Quality:', options.quality);
+          console.log('Format selector:', formatSelector);
+          console.log('Using yt-dlp path:', ytDlpPath);
 
-        let output = '';
-        let error = '';
-        let currentStage = 'preparing';
-        let videoCompleted = false;
-        let audioCompleted = false;
-        let overallProgress = 0;
+          const args = [
+            options.url,
+            '-o',
+            path.join(resolvedPath, 'VIDYFLOW_%(title)s.%(ext)s'),
+            '--format',
+            formatSelector,
+            '--merge-output-format',
+            'mp4',
+            '--no-playlist',
+            '--progress',
+            '--newline',
+            // 确保ffmpeg可用于合并
+            '--prefer-ffmpeg',
+            // 如果需要合并，保留临时文件直到合并完成
+            // '--keep-video',
+          ];
 
-        ytDlp.stdout.on('data', (data: Buffer) => {
-          const dataStr = data.toString();
-          output += dataStr;
-          console.log('yt-dlp stdout:', dataStr);
+          console.log('yt-dlp args:', args);
+          const ytDlp = spawn(ytDlpPath, args);
 
-          // 解析不同阶段的进度
-          const lines = dataStr.split('\n').filter(line => line.trim());
+          let output = '';
+          let error = '';
+          let currentStage = 'preparing';
+          let videoCompleted = false;
+          let audioCompleted = false;
+          let overallProgress = 0;
 
-          for (const line of lines) {
-            // 检测当前阶段
-            if (line.includes('[download] Destination:')) {
-              if (line.includes('audio')) {
-                currentStage = 'audio';
-                console.log('🎵 开始下载音频');
-              } else {
-                currentStage = 'video';
-                console.log('🎬 开始下载视频');
+          ytDlp.stdout.on('data', (data: Buffer) => {
+            const dataStr = data.toString();
+            output += dataStr;
+            console.log('yt-dlp stdout:', dataStr);
+
+            // 解析不同阶段的进度
+            const lines = dataStr.split('\n').filter(line => line.trim());
+
+            for (const line of lines) {
+              // 检测当前阶段
+              if (line.includes('[download] Destination:')) {
+                if (line.includes('audio')) {
+                  currentStage = 'audio';
+                  console.log('🎵 开始下载音频');
+                } else {
+                  currentStage = 'video';
+                  console.log('🎬 开始下载视频');
+                }
+              } else if (
+                line.includes('[Merger]') ||
+                line.includes('Merging formats')
+              ) {
+                currentStage = 'merging';
+                console.log('🔄 开始合并音视频');
+              } else if (line.includes('[ffmpeg]')) {
+                currentStage = 'processing';
+                console.log('⚙️ 后处理中');
               }
-            } else if (
-              line.includes('[Merger]') ||
-              line.includes('Merging formats')
-            ) {
-              currentStage = 'merging';
-              console.log('🔄 开始合并音视频');
-            } else if (line.includes('[ffmpeg]')) {
-              currentStage = 'processing';
-              console.log('⚙️ 后处理中');
-            }
 
-            // 解析进度信息 - 支持多种yt-dlp输出格式
-            let progressMatch = null;
-            let percentage = 0;
-            let totalSize = 0;
-            let totalUnit = '';
-            let speed = 0;
-            let speedUnit = '';
-            let eta = '';
+              // 解析进度信息 - 支持多种yt-dlp输出格式
+              let progressMatch = null;
+              let percentage = 0;
+              let totalSize = 0;
+              let totalUnit = '';
+              let speed = 0;
+              let speedUnit = '';
+              let eta = '';
 
-            // 格式1: [download]   0.1% of ~  26.99MiB at    8.65KiB/s ETA 20:40 (frag 1/27)
-            progressMatch = line.match(
-              /\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)(?:\s+\(frag\s+\d+\/\d+\))?/
-            );
-
-            if (progressMatch) {
-              percentage = parseFloat(progressMatch[1]);
-              totalSize = parseFloat(progressMatch[2]);
-              totalUnit = progressMatch[3];
-              speed = parseFloat(progressMatch[4]);
-              speedUnit = progressMatch[5];
-              eta = progressMatch[6];
-            } else {
-              // 格式2: [download]  68.4% of    8.04MiB at   41.60KiB/s ETA 01:02
+              // 格式1: [download]   0.1% of ~  26.99MiB at    8.65KiB/s ETA 20:40 (frag 1/27)
               progressMatch = line.match(
-                /\[download\]\s+(\d+\.?\d*)%\s+of\s+([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)/
+                /\[download\]\s+(\d+\.?\d*)%\s+of\s+~?\s*([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)(?:\s+\(frag\s+\d+\/\d+\))?/
               );
 
               if (progressMatch) {
@@ -222,189 +260,207 @@ ipcMain.handle(
                 speedUnit = progressMatch[5];
                 eta = progressMatch[6];
               } else {
-                // 格式3: [download] 100% of 4.25MiB in 00:01:37 at 44.75KiB/s
+                // 格式2: [download]  68.4% of    8.04MiB at   41.60KiB/s ETA 01:02
                 progressMatch = line.match(
-                  /\[download\]\s+100%\s+of\s+([\d.]+)(\w+)\s+in\s+(\d+:\d+:\d+|\d+:\d+)\s+at\s+([\d.]+)(\w+\/s)/
+                  /\[download\]\s+(\d+\.?\d*)%\s+of\s+([\d.]+)(\w+)\s+at\s+([\d.]+)(\w+\/s)\s+ETA\s+(\d+:\d+|Unknown)/
                 );
 
                 if (progressMatch) {
-                  percentage = 100;
-                  totalSize = parseFloat(progressMatch[1]);
-                  totalUnit = progressMatch[2];
+                  percentage = parseFloat(progressMatch[1]);
+                  totalSize = parseFloat(progressMatch[2]);
+                  totalUnit = progressMatch[3];
                   speed = parseFloat(progressMatch[4]);
                   speedUnit = progressMatch[5];
-                  eta = '00:00';
-                }
-              }
-            }
-
-            if (progressMatch && percentage !== undefined) {
-              // 计算整体进度
-              if (currentStage === 'video') {
-                // 视频下载占总进度的60%
-                overallProgress = (percentage / 100) * 60;
-                if (percentage === 100) {
-                  videoCompleted = true;
-                  console.log('✅ 视频下载完成');
-                }
-              } else if (currentStage === 'audio') {
-                // 音频下载占总进度的30% (60% + 30% = 90%)
-                const audioProgress = (percentage / 100) * 30;
-                overallProgress = 60 + audioProgress;
-                if (percentage === 100) {
-                  audioCompleted = true;
-                  console.log('✅ 音频下载完成');
-                }
-              } else if (currentStage === 'merging') {
-                // 合并占总进度的10% (90% + 10% = 100%)
-                overallProgress = 90 + 10;
-                eta = '合并中...';
-              }
-
-              // 转换文件大小为字节
-              const sizeMultipliers: { [key: string]: number } = {
-                B: 1,
-                KiB: 1024,
-                MiB: 1024 * 1024,
-                GiB: 1024 * 1024 * 1024,
-                TiB: 1024 * 1024 * 1024 * 1024,
-                KB: 1000,
-                MB: 1000 * 1000,
-                GB: 1000 * 1000 * 1000,
-                TB: 1000 * 1000 * 1000 * 1000,
-              };
-
-              const totalBytes = totalSize * (sizeMultipliers[totalUnit] || 1);
-              const downloadedBytes = Math.round(
-                (percentage / 100) * totalBytes
-              );
-
-              // 转换速度为字节/秒
-              const speedMultipliers: { [key: string]: number } = {
-                'B/s': 1,
-                'KiB/s': 1024,
-                'MiB/s': 1024 * 1024,
-                'GiB/s': 1024 * 1024 * 1024,
-                'TiB/s': 1024 * 1024 * 1024 * 1024,
-                'KB/s': 1000,
-                'MB/s': 1000 * 1000,
-                'GB/s': 1000 * 1000 * 1000,
-                'TB/s': 1000 * 1000 * 1000 * 1000,
-              };
-
-              const speedBytesPerSec =
-                speed * (speedMultipliers[speedUnit] || 1);
-
-              // 格式化速度显示
-              const formatSpeed = (bytesPerSec: number): string => {
-                if (bytesPerSec >= 1024 * 1024) {
-                  return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
-                } else if (bytesPerSec >= 1024) {
-                  return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+                  eta = progressMatch[6];
                 } else {
-                  return `${bytesPerSec.toFixed(0)} B/s`;
+                  // 格式3: [download] 100% of 4.25MiB in 00:01:37 at 44.75KiB/s
+                  progressMatch = line.match(
+                    /\[download\]\s+100%\s+of\s+([\d.]+)(\w+)\s+in\s+(\d+:\d+:\d+|\d+:\d+)\s+at\s+([\d.]+)(\w+\/s)/
+                  );
+
+                  if (progressMatch) {
+                    percentage = 100;
+                    totalSize = parseFloat(progressMatch[1]);
+                    totalUnit = progressMatch[2];
+                    speed = parseFloat(progressMatch[4]);
+                    speedUnit = progressMatch[5];
+                    eta = '00:00';
+                  }
                 }
-              };
+              }
 
-              // 获取阶段显示名称
-              const getStageDisplayName = (stage: string): string => {
-                const stageNames: { [key: string]: string } = {
-                  preparing: '准备中',
-                  video: '下载视频',
-                  audio: '下载音频',
-                  merging: '合并文件',
-                  processing: '后处理',
+              if (progressMatch && percentage !== undefined) {
+                // 计算整体进度
+                if (currentStage === 'video') {
+                  // 视频下载占总进度的60%
+                  overallProgress = (percentage / 100) * 60;
+                  if (percentage === 100) {
+                    videoCompleted = true;
+                    console.log('✅ 视频下载完成');
+                  }
+                } else if (currentStage === 'audio') {
+                  // 音频下载占总进度的30% (60% + 30% = 90%)
+                  const audioProgress = (percentage / 100) * 30;
+                  overallProgress = 60 + audioProgress;
+                  if (percentage === 100) {
+                    audioCompleted = true;
+                    console.log('✅ 音频下载完成');
+                  }
+                } else if (currentStage === 'merging') {
+                  // 合并占总进度的10% (90% + 10% = 100%)
+                  overallProgress = 90 + 10;
+                  eta = '合并中...';
+                }
+
+                // 转换文件大小为字节
+                const sizeMultipliers: { [key: string]: number } = {
+                  B: 1,
+                  KiB: 1024,
+                  MiB: 1024 * 1024,
+                  GiB: 1024 * 1024 * 1024,
+                  TiB: 1024 * 1024 * 1024 * 1024,
+                  KB: 1000,
+                  MB: 1000 * 1000,
+                  GB: 1000 * 1000 * 1000,
+                  TB: 1000 * 1000 * 1000 * 1000,
                 };
-                return stageNames[stage] || stage;
-              };
 
-              const progressData = {
-                raw: line,
-                stage: getStageDisplayName(currentStage),
-                timestamp: Date.now(),
-                downloaded: downloadedBytes,
-                total: totalBytes,
-                percentage: Math.min(overallProgress, 100), // 使用计算的整体进度
-                speed: formatSpeed(speedBytesPerSec),
-                eta: currentStage === 'merging' ? '合并中...' : eta,
-                completed: overallProgress >= 100,
-              };
+                const totalBytes =
+                  totalSize * (sizeMultipliers[totalUnit] || 1);
+                const downloadedBytes = Math.round(
+                  (percentage / 100) * totalBytes
+                );
 
-              console.log('📤 发送整体进度:', {
-                stage: currentStage,
-                stageProgress: percentage,
-                overallProgress: overallProgress.toFixed(1),
-                videoCompleted,
-                audioCompleted,
-              });
+                // 转换速度为字节/秒
+                const speedMultipliers: { [key: string]: number } = {
+                  'B/s': 1,
+                  'KiB/s': 1024,
+                  'MiB/s': 1024 * 1024,
+                  'GiB/s': 1024 * 1024 * 1024,
+                  'TiB/s': 1024 * 1024 * 1024 * 1024,
+                  'KB/s': 1000,
+                  'MB/s': 1000 * 1000,
+                  'GB/s': 1000 * 1000 * 1000,
+                  'TB/s': 1000 * 1000 * 1000 * 1000,
+                };
 
-              // 发送详细的进度信息
-              event.sender.send('download-progress', progressData);
-            } else {
-              // 处理合并阶段
-              if (
-                line.includes('[Merger]') &&
-                videoCompleted &&
-                audioCompleted
-              ) {
+                const speedBytesPerSec =
+                  speed * (speedMultipliers[speedUnit] || 1);
+
+                // 格式化速度显示
+                const formatSpeed = (bytesPerSec: number): string => {
+                  if (bytesPerSec >= 1024 * 1024) {
+                    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+                  } else if (bytesPerSec >= 1024) {
+                    return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+                  } else {
+                    return `${bytesPerSec.toFixed(0)} B/s`;
+                  }
+                };
+
+                // 获取阶段显示名称
+                const getStageDisplayName = (stage: string): string => {
+                  const stageNames: { [key: string]: string } = {
+                    preparing: '准备中',
+                    video: '下载视频',
+                    audio: '下载音频',
+                    merging: '合并文件',
+                    processing: '后处理',
+                  };
+                  return stageNames[stage] || stage;
+                };
+
                 const progressData = {
                   raw: line,
-                  stage: '合并文件',
+                  stage: getStageDisplayName(currentStage),
                   timestamp: Date.now(),
-                  downloaded: 0,
-                  total: 0,
-                  percentage: 95,
-                  speed: '',
-                  eta: '合并中...',
-                  completed: false,
+                  downloaded: downloadedBytes,
+                  total: totalBytes,
+                  percentage: Math.min(overallProgress, 100), // 使用计算的整体进度
+                  speed: formatSpeed(speedBytesPerSec),
+                  eta: currentStage === 'merging' ? '合并中...' : eta,
+                  completed: overallProgress >= 100,
                 };
+
+                console.log('📤 发送整体进度:', {
+                  stage: currentStage,
+                  stageProgress: percentage,
+                  overallProgress: overallProgress.toFixed(1),
+                  videoCompleted,
+                  audioCompleted,
+                });
+
+                // 发送详细的进度信息
                 event.sender.send('download-progress', progressData);
+              } else {
+                // 处理合并阶段
+                if (
+                  line.includes('[Merger]') &&
+                  videoCompleted &&
+                  audioCompleted
+                ) {
+                  const progressData = {
+                    raw: line,
+                    stage: '合并文件',
+                    timestamp: Date.now(),
+                    downloaded: 0,
+                    total: 0,
+                    percentage: 95,
+                    speed: '',
+                    eta: '合并中...',
+                    completed: false,
+                  };
+                  event.sender.send('download-progress', progressData);
+                }
               }
             }
-          }
-        });
+          });
 
-        ytDlp.stderr.on('data', (data: Buffer) => {
-          const errorStr = data.toString();
-          error += errorStr;
-          console.log('yt-dlp stderr:', errorStr);
-          event.sender.send('download-error', errorStr);
-        });
+          ytDlp.stderr.on('data', (data: Buffer) => {
+            const errorStr = data.toString();
+            error += errorStr;
+            console.log('yt-dlp stderr:', errorStr);
+            event.sender.send('download-error', errorStr);
+          });
 
-        ytDlp.on('close', (code: number) => {
-          console.log('yt-dlp exit code:', code);
-          if (code === 0) {
-            // 发送完成进度
-            event.sender.send('download-progress', {
-              raw: 'Download completed',
-              stage: '下载完成',
-              timestamp: Date.now(),
-              downloaded: 0,
-              total: 0,
-              percentage: 100,
-              speed: '',
-              eta: '00:00',
-              completed: true,
-            });
+          ytDlp.on('close', (code: number) => {
+            console.log('yt-dlp exit code:', code);
+            if (code === 0) {
+              // 发送完成进度
+              event.sender.send('download-progress', {
+                raw: 'Download completed',
+                stage: '下载完成',
+                timestamp: Date.now(),
+                downloaded: 0,
+                total: 0,
+                percentage: 100,
+                speed: '',
+                eta: '00:00',
+                completed: true,
+              });
 
-            resolve({ success: true, output });
-          } else {
-            resolve({
-              success: false,
-              error: error || `Process exited with code ${code}`,
-            });
-          }
-        });
+              resolve({ success: true, output });
+            } else {
+              resolve({
+                success: false,
+                error: error || `Process exited with code ${code}`,
+              });
+            }
+          });
 
-        ytDlp.on('error', (err: Error) => {
-          console.error('yt-dlp spawn error:', err);
-          resolve({ success: false, error: err.message });
-        });
-      } catch (err) {
-        console.error('download-video handler error:', err);
-        resolve({ success: false, error: (err as Error).message });
-      }
-    });
+          ytDlp.on('error', (err: Error) => {
+            console.error('yt-dlp spawn error:', err);
+            resolve({ success: false, error: err.message });
+          });
+        } catch (err) {
+          console.error('download-video handler error:', err);
+          resolve({ success: false, error: (err as Error).message });
+        }
+      });
+    } catch (err) {
+      console.error('download-video handler error:', err);
+      return { success: false, error: (err as Error).message };
+    }
   }
 );
 
@@ -422,56 +478,72 @@ ipcMain.handle(
     event: IpcMainInvokeEvent,
     url: string
   ): Promise<VideoInfo | { error: string }> => {
-    return new Promise(resolve => {
-      try {
-        console.log('Getting video info for:', url);
-        const ytDlp = spawn('yt-dlp', ['--dump-json', '--no-download', url]);
-
-        let output = '';
-        let error = '';
-
-        ytDlp.stdout.on('data', (data: Buffer) => {
-          output += data.toString();
-        });
-
-        ytDlp.stderr.on('data', (data: Buffer) => {
-          const errorStr = data.toString();
-          error += errorStr;
-          console.log('yt-dlp stderr:', errorStr);
-        });
-
-        ytDlp.on('close', (code: number) => {
-          console.log('yt-dlp info exit code:', code);
-          if (code === 0) {
-            try {
-              const videoInfo = JSON.parse(output);
-              console.log('Video info parsed successfully');
-              resolve({
-                title: videoInfo.title,
-                duration: videoInfo.duration,
-                thumbnail: videoInfo.thumbnail,
-                uploader: videoInfo.uploader,
-                formats: videoInfo.formats || [],
-              });
-            } catch (parseError) {
-              console.error('JSON parse error:', parseError);
-              resolve({ error: '解析视频信息失败' });
-            }
-          } else {
-            console.error('yt-dlp failed with code:', code, 'error:', error);
-            resolve({ error: error || '获取视频信息失败' });
-          }
-        });
-
-        ytDlp.on('error', (err: Error) => {
-          console.error('yt-dlp spawn error:', err);
-          resolve({ error: `无法启动yt-dlp: ${err.message}` });
-        });
-      } catch (err) {
-        console.error('get-video-info handler error:', err);
-        resolve({ error: (err as Error).message });
+    try {
+      // 检查依赖是否可用
+      const status = await dependencyManager.checkDependencies();
+      if (!status.ytDlp.installed) {
+        return { error: 'yt-dlp未安装，请先安装依赖' };
       }
-    });
+
+      // 获取yt-dlp路径
+      const ytDlpPath = await dependencyManager.getYtDlpPath();
+
+      return new Promise(resolve => {
+        try {
+          console.log('Getting video info for:', url);
+          console.log('Using yt-dlp path:', ytDlpPath);
+
+          const ytDlp = spawn(ytDlpPath, ['--dump-json', '--no-download', url]);
+
+          let output = '';
+          let error = '';
+
+          ytDlp.stdout.on('data', (data: Buffer) => {
+            output += data.toString();
+          });
+
+          ytDlp.stderr.on('data', (data: Buffer) => {
+            const errorStr = data.toString();
+            error += errorStr;
+            console.log('yt-dlp stderr:', errorStr);
+          });
+
+          ytDlp.on('close', (code: number) => {
+            console.log('yt-dlp info exit code:', code);
+            if (code === 0) {
+              try {
+                const videoInfo = JSON.parse(output);
+                console.log('Video info parsed successfully');
+                resolve({
+                  title: videoInfo.title,
+                  duration: videoInfo.duration,
+                  thumbnail: videoInfo.thumbnail,
+                  uploader: videoInfo.uploader,
+                  formats: videoInfo.formats || [],
+                });
+              } catch (parseError) {
+                console.error('JSON parse error:', parseError);
+                resolve({ error: '解析视频信息失败' });
+              }
+            } else {
+              console.error('yt-dlp failed with code:', code, 'error:', error);
+              resolve({ error: error || '获取视频信息失败' });
+            }
+          });
+
+          ytDlp.on('error', (err: Error) => {
+            console.error('yt-dlp spawn error:', err);
+            resolve({ error: `无法启动yt-dlp: ${err.message}` });
+          });
+        } catch (err) {
+          console.error('get-video-info handler error:', err);
+          resolve({ error: (err as Error).message });
+        }
+      });
+    } catch (err) {
+      console.error('get-video-info handler error:', err);
+      return { error: (err as Error).message };
+    }
   }
 );
 
