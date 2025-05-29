@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Download,
   Folder,
@@ -30,6 +30,8 @@ interface DownloadProgress {
   total: number;
   speed: string;
   eta: string;
+  stage: string;
+  stageProgress: { [key: string]: number };
 }
 
 interface HistoryItem {
@@ -47,7 +49,7 @@ interface HistoryItem {
 const App: React.FC = () => {
   const [url, setUrl] = useState('');
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
-  const [downloadPath, setDownloadPath] = useState('/Users/Downloads');
+  const [downloadPath, setDownloadPath] = useState('~/Downloads');
   const [selectedQuality, setSelectedQuality] = useState('1080p');
   const [isLoading, setIsLoading] = useState(false);
   const [downloadProgress, setDownloadProgress] =
@@ -55,25 +57,239 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
 
-  // 模拟获取视频信息
+  // 监听下载进度
+  useEffect(() => {
+    const handleDownloadProgress = (
+      progressData:
+        | string
+        | {
+            raw: string;
+            stage: string;
+            timestamp: number;
+            downloaded?: number;
+            total?: number;
+            percentage?: number;
+            speed?: string;
+            eta?: string;
+            completed?: boolean;
+          }
+    ) => {
+      // 处理新的进度数据格式
+      if (typeof progressData === 'string') {
+        // 兼容旧格式
+        parseProgressString(progressData);
+      } else if (progressData && progressData.raw) {
+        // 新格式
+        parseProgressData(progressData);
+      }
+    };
+
+    const parseProgressString = (data: string) => {
+      if (data.includes('%')) {
+        const progressMatch = data.match(/(\d+\.?\d*)%/);
+        const speedMatch = data.match(/(\d+\.?\d*\w+\/s)/);
+        const etaMatch = data.match(/ETA (\d+:\d+)/);
+
+        if (progressMatch) {
+          const progress = parseFloat(progressMatch[1]);
+          setDownloadProgress(prev =>
+            prev
+              ? {
+                  ...prev,
+                  progress,
+                  speed: speedMatch ? speedMatch[1] : prev.speed,
+                  eta: etaMatch ? etaMatch[1] : prev.eta,
+                }
+              : null
+          );
+        }
+      }
+    };
+
+    const parseProgressData = (progressData: {
+      raw: string;
+      stage: string;
+      timestamp: number;
+      downloaded?: number;
+      total?: number;
+      percentage?: number;
+      speed?: string;
+      eta?: string;
+      completed?: boolean;
+    }) => {
+      const {
+        raw,
+        stage,
+        downloaded,
+        total,
+        percentage,
+        speed,
+        eta,
+        completed,
+      } = progressData;
+
+      setDownloadProgress(prev => {
+        if (!prev) return null;
+
+        const newProgress = { ...prev };
+        newProgress.stage = stage;
+
+        // 如果主进程已经解析了数据，直接使用
+        if (downloaded !== undefined && total !== undefined) {
+          newProgress.downloaded = downloaded;
+          newProgress.total = total;
+
+          // 使用百分比或计算百分比
+          const currentPercentage =
+            percentage !== undefined
+              ? percentage
+              : total > 0
+                ? (downloaded / total) * 100
+                : 0;
+
+          // 更新阶段进度
+          newProgress.stageProgress[stage] = currentPercentage;
+
+          // 如果是单文件下载（没有音视频分离），直接使用百分比
+          if (stage === 'video' && !raw.includes('audio')) {
+            newProgress.progress = currentPercentage;
+          } else {
+            // 计算总体进度（多阶段下载）
+            const stageWeights = {
+              preparing: 5,
+              video: 45,
+              audio: 35,
+              merging: 10,
+              processing: 5,
+            };
+
+            let totalProgress = 0;
+            let completedWeight = 0;
+
+            const stageOrder = [
+              'preparing',
+              'video',
+              'audio',
+              'merging',
+              'processing',
+            ];
+            const currentStageIndex = stageOrder.indexOf(stage);
+
+            // 计算已完成阶段的权重
+            for (let i = 0; i < currentStageIndex; i++) {
+              completedWeight +=
+                stageWeights[stageOrder[i] as keyof typeof stageWeights] || 0;
+            }
+
+            // 计算当前阶段的进度
+            const currentStageWeight =
+              stageWeights[stage as keyof typeof stageWeights] || 0;
+            totalProgress =
+              completedWeight + (currentPercentage * currentStageWeight) / 100;
+
+            newProgress.progress = Math.min(totalProgress, 100);
+          }
+        }
+
+        // 更新速度和ETA
+        if (speed) {
+          newProgress.speed = speed;
+        }
+        if (eta) {
+          newProgress.eta = eta;
+        }
+
+        // 如果下载完成
+        if (completed) {
+          newProgress.progress = 100;
+          newProgress.eta = '00:00';
+        }
+
+        return newProgress;
+      });
+    };
+
+    const handleDownloadError = (error: string) => {
+      console.error('Download error:', error);
+    };
+
+    window.electronAPI.onDownloadProgress(handleDownloadProgress);
+    window.electronAPI.onDownloadError(handleDownloadError);
+
+    return () => {
+      window.electronAPI.removeAllListeners('download-progress');
+      window.electronAPI.removeAllListeners('download-error');
+    };
+  }, []);
+
+  // 初始化默认下载路径
+  useEffect(() => {
+    const initializeDownloadPath = async () => {
+      try {
+        const defaultPath = await window.electronAPI.getDefaultDownloadPath();
+        setDownloadPath(defaultPath);
+      } catch (error) {
+        console.error('获取默认下载路径失败:', error);
+        // 保持默认值
+      }
+    };
+
+    initializeDownloadPath();
+  }, []);
+
+  // 获取视频信息
   const handleGetVideoInfo = async () => {
     if (!url.trim()) return;
 
     setIsLoading(true);
     try {
-      // 模拟API调用
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const result = await window.electronAPI.getVideoInfo(url);
+
+      if ('error' in result) {
+        alert(`获取视频信息失败: ${result.error}`);
+        return;
+      }
+
+      // 格式化时长
+      const formatDuration = (seconds?: number) => {
+        if (!seconds) return 'Unknown';
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        const secs = Math.floor(seconds % 60);
+
+        if (hours > 0) {
+          return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+        return `${minutes}:${secs.toString().padStart(2, '0')}`;
+      };
+
+      // 提取可用的质量选项
+      const availableQualities = result.formats
+        ?.filter(format => format.height)
+        .map(format => `${format.height}p`)
+        .filter((quality, index, arr) => arr.indexOf(quality) === index)
+        .sort((a, b) => parseInt(b) - parseInt(a)) || ['best'];
 
       setVideoInfo({
-        title: '如何学习编程 - 完整教程指南',
-        author: 'TechChannel',
-        duration: '25:30',
+        title: result.title || 'Unknown Title',
+        author: result.uploader || 'Unknown Author',
+        duration: formatDuration(result.duration),
         thumbnail:
+          result.thumbnail ||
           'https://via.placeholder.com/160x90/3B82F6/ffffff?text=Video',
-        quality: ['1080p', '720p', '480p', '360p'],
+        quality:
+          availableQualities.length > 0
+            ? availableQualities
+            : ['best', '720p', '480p', '360p'],
       });
+
+      // 设置默认质量
+      if (availableQualities.length > 0) {
+        setSelectedQuality(availableQualities[0]);
+      }
     } catch (error) {
       console.error('获取视频信息失败:', error);
+      alert(`获取视频信息失败: ${error}`);
     } finally {
       setIsLoading(false);
     }
@@ -100,53 +316,65 @@ const App: React.FC = () => {
       fileName: `${videoInfo.title}.mp4`,
       progress: 0,
       downloaded: 0,
-      total: 147,
+      total: 0,
       speed: '0 MB/s',
       eta: '计算中...',
+      stage: 'initial',
+      stageProgress: {},
     });
 
     try {
-      // 模拟下载进度
-      for (let i = 0; i <= 100; i += 5) {
-        await new Promise(resolve => setTimeout(resolve, 200));
-        setDownloadProgress(prev =>
-          prev
-            ? {
-                ...prev,
-                progress: i,
-                downloaded: Math.round((i / 100) * 147),
-                speed: `${(Math.random() * 5 + 1).toFixed(1)} MB/s`,
-                eta: i < 100 ? `${Math.round((100 - i) * 0.3)}秒` : '完成',
-              }
-            : null
-        );
-      }
+      const result = await window.electronAPI.downloadVideo({
+        url,
+        outputPath: downloadPath,
+        quality: selectedQuality,
+      });
 
-      // 添加到历史记录
-      const newHistoryItem: HistoryItem = {
+      if (result.success) {
+        // 添加到历史记录
+        const newHistoryItem: HistoryItem = {
+          id: Date.now().toString(),
+          title: videoInfo.title,
+          fileName: `${videoInfo.title}.mp4`,
+          downloadTime: new Date().toLocaleString('zh-CN'),
+          size: 'Unknown',
+          quality: selectedQuality,
+          status: 'success',
+          filePath: downloadPath,
+        };
+
+        setHistory(prev => [newHistoryItem, ...prev]);
+
+        // 重置状态
+        setTimeout(() => {
+          setDownloadProgress(null);
+          setIsDownloading(false);
+          setUrl('');
+          setVideoInfo(null);
+        }, 2000);
+      } else {
+        throw new Error(result.error || '下载失败');
+      }
+    } catch (error) {
+      console.error('下载失败:', error);
+
+      // 添加失败记录到历史
+      const failedHistoryItem: HistoryItem = {
         id: Date.now().toString(),
         title: videoInfo.title,
         fileName: `${videoInfo.title}.mp4`,
         downloadTime: new Date().toLocaleString('zh-CN'),
-        size: '147MB',
+        size: 'Unknown',
         quality: selectedQuality,
-        status: 'success',
-        filePath: `${downloadPath}/${videoInfo.title}.mp4`,
+        status: 'failed',
+        errorMessage: error instanceof Error ? error.message : '未知错误',
+        filePath: downloadPath,
       };
 
-      setHistory(prev => [newHistoryItem, ...prev]);
-
-      // 重置状态
-      setTimeout(() => {
-        setDownloadProgress(null);
-        setIsDownloading(false);
-        setUrl('');
-        setVideoInfo(null);
-      }, 2000);
-    } catch (error) {
-      console.error('下载失败:', error);
+      setHistory(prev => [failedHistoryItem, ...prev]);
       setIsDownloading(false);
       setDownloadProgress(null);
+      alert(`下载失败: ${error}`);
     }
   };
 
@@ -163,6 +391,31 @@ const App: React.FC = () => {
   // 清空历史记录
   const handleClearHistory = () => {
     setHistory([]);
+  };
+
+  // 辅助函数：格式化文件大小
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const k = 1024;
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+
+    return `${(bytes / Math.pow(k, i)).toFixed(1)} ${units[i]}`;
+  };
+
+  // 辅助函数：获取阶段显示名称
+  const getStageDisplayName = (stage: string): string => {
+    const stageNames: { [key: string]: string } = {
+      preparing: '准备中',
+      initial: '初始化',
+      video: '下载视频',
+      audio: '下载音频',
+      merging: '合并文件',
+      processing: '后处理',
+    };
+
+    return stageNames[stage] || stage;
   };
 
   return (
@@ -291,36 +544,86 @@ const App: React.FC = () => {
         {/* 下载进度 */}
         {downloadProgress && (
           <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex items-center gap-2 mb-4">
               <Monitor className="w-5 h-5 text-slate-600" />
               <span className="font-medium text-slate-700">下载进度</span>
+              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                {getStageDisplayName(downloadProgress.stage)}
+              </span>
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-slate-600">
                   正在下载: {downloadProgress.fileName}
                 </span>
                 <span className="font-medium text-blue-600">
-                  {downloadProgress.progress}%
+                  {downloadProgress.progress.toFixed(1)}%
                 </span>
               </div>
 
-              <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="w-full bg-slate-200 rounded-full h-3">
                 <div
-                  className="bg-blue-500 h-2 rounded-full transition-all duration-300 ease-out"
+                  className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-500 ease-out"
                   style={{ width: `${downloadProgress.progress}%` }}
                 />
               </div>
 
-              <div className="flex justify-between text-xs text-slate-500">
-                <span>
-                  {downloadProgress.downloaded}MB / {downloadProgress.total}MB
-                </span>
-                <span>
-                  {downloadProgress.speed} • 预计剩余: {downloadProgress.eta}
-                </span>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">已下载:</span>
+                    <span className="font-medium text-slate-700">
+                      {formatFileSize(downloadProgress.downloaded)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">总大小:</span>
+                    <span className="font-medium text-slate-700">
+                      {downloadProgress.total > 0
+                        ? formatFileSize(downloadProgress.total)
+                        : '计算中...'}
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">下载速度:</span>
+                    <span className="font-medium text-slate-700">
+                      {downloadProgress.speed}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-500">预计剩余:</span>
+                    <span className="font-medium text-slate-700">
+                      {downloadProgress.eta}
+                    </span>
+                  </div>
+                </div>
               </div>
+
+              {/* 阶段进度详情 */}
+              {Object.keys(downloadProgress.stageProgress).length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-200">
+                  <div className="text-xs text-slate-500 mb-2">阶段详情:</div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    {Object.entries(downloadProgress.stageProgress).map(
+                      ([stage, progress]) => (
+                        <div key={stage} className="flex justify-between">
+                          <span className="text-slate-500">
+                            {getStageDisplayName(stage)}:
+                          </span>
+                          <span
+                            className={`font-medium ${stage === downloadProgress.stage ? 'text-blue-600' : 'text-green-600'}`}
+                          >
+                            {progress.toFixed(1)}%
+                          </span>
+                        </div>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

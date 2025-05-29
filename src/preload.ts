@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 // 定义API接口
 interface ElectronAPI {
   selectDownloadPath: () => Promise<string | null>;
+  getDefaultDownloadPath: () => Promise<string>;
   downloadVideo: (options: {
     url: string;
     outputPath: string;
@@ -30,6 +31,7 @@ interface ElectronAPI {
 // 暴露API到渲染进程
 const electronAPI: ElectronAPI = {
   selectDownloadPath: () => ipcRenderer.invoke('select-download-folder'),
+  getDefaultDownloadPath: () => ipcRenderer.invoke('get-default-download-path'),
   downloadVideo: options => ipcRenderer.invoke('download-video', options),
   getVideoInfo: url => ipcRenderer.invoke('get-video-info', url),
   openFolder: folderPath => ipcRenderer.invoke('open-folder', folderPath),

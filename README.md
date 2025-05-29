@@ -1,133 +1,160 @@
-# XDown - 视频下载器
+# XDown - 现代化视频下载器
 
-一个基于 Electron + React + TypeScript 的现代化视频下载器，支持多平台视频下载。
+一个基于 Electron + React + TypeScript 的现代化视频下载器，支持多平台视频下载，具有实时进度显示和智能音视频合并功能。
 
-## 功能特性
+![XDown Interface](https://via.placeholder.com/800x500/3B82F6/ffffff?text=XDown+Interface)
 
-- 🎥 支持多平台视频下载（YouTube、Facebook、Twitter等）
-- 🎨 现代化的用户界面，基于 React + Tailwind CSS
-- 📱 响应式设计，适配不同屏幕尺寸
-- 📊 实时下载进度显示
-- 📁 自定义下载路径选择
-- 🎛️ 多种视频质量选项
-- 📝 下载历史记录
-- 🔧 基于 Electron Forge 官方脚手架
+## ✨ 特性
 
-## 技术栈
+- 🎬 **多平台支持** - 基于 yt-dlp，支持 YouTube、Bilibili 等主流视频平台
+- 📊 **实时进度** - 智能进度管理，显示下载阶段和文件大小
+- 🎵 **音视频合并** - 自动合并音频和视频为完整的 MP4 文件
+- 🎯 **质量选择** - 支持多种视频质量选择（720p、1080p 等）
+- 📝 **下载历史** - 完整的下载记录管理
+- 🎨 **现代化 UI** - 简洁美观的用户界面，基于 Tailwind CSS
 
-- **前端框架**: React 19 + TypeScript
-- **桌面应用**: Electron 36
-- **构建工具**: Vite 5 + Electron Forge
-- **UI 框架**: Tailwind CSS
-- **图标库**: Lucide React
-- **代码规范**: ESLint + Prettier
-- **包管理器**: Yarn
+## 🚀 快速开始
 
-## 开发环境要求
+### 环境要求
 
-- Node.js >= 16
-- Yarn
-- yt-dlp (用于视频下载)
+- Node.js 18+
+- Yarn 1.22+
+- yt-dlp (需要在系统 PATH 中)
 
-## 安装依赖
+### 安装 yt-dlp
 
 ```bash
-yarn install
+# macOS (使用 Homebrew)
+brew install yt-dlp
+
+# Windows (使用 Chocolatey)
+choco install yt-dlp
+
+# 或者直接下载二进制文件
+# https://github.com/yt-dlp/yt-dlp/releases
 ```
 
-## 开发模式
+### 运行项目
 
 ```bash
+# 克隆项目
+git clone <repository-url>
+cd xdown
+
+# 安装依赖
+yarn install
+
+# 启动开发服务器
 yarn start
 ```
 
-## 构建应用
+## 🛠️ 开发
+
+### 可用脚本
 
 ```bash
-# 打包应用
-yarn package
+# 启动开发服务器
+yarn start
 
-# 创建分发包
-yarn make
-```
-
-## 代码规范
-
-```bash
-# 检查代码规范
-yarn lint
-
-# 自动修复代码规范问题
-yarn lint:fix
+# 代码检查
+yarn run lint
+yarn run type-check
 
 # 格式化代码
-yarn format
+yarn run format
 
-# 检查代码格式
-yarn format:check
-
-# 类型检查
-yarn type-check
+# 构建应用
+yarn run make
 ```
 
-## 项目结构
+### 技术栈
+
+- **前端**: React 19 + TypeScript 5 + Tailwind CSS 3
+- **桌面应用**: Electron 36 + Electron Forge
+- **构建工具**: Vite 5
+- **代码规范**: ESLint + Prettier
+- **包管理**: Yarn
+
+## 📚 文档
+
+详细的项目文档位于 `docs/` 目录：
+
+- **[完整文档索引](./docs/README.md)** - 所有文档的导航和概述
+- **[修复日志](./docs/fixes/)** - 问题修复和改进记录
+- **[设置指南](./docs/setup/)** - 环境配置和设置说明
+
+### 常见问题
+
+- **下载失败** → 查看 [权限修复文档](./docs/fixes/01-permission-fix.md)
+- **进度不显示** → 查看 [进度修复文档](./docs/fixes/03-progress-fix.md)
+- **音视频分离** → 查看 [进度修复文档](./docs/fixes/03-progress-fix.md)
+
+## 🎯 使用方法
+
+1. **输入视频链接** - 在输入框中粘贴视频 URL
+2. **获取视频信息** - 点击"获取"按钮解析视频信息
+3. **选择设置** - 选择下载路径和视频质量
+4. **开始下载** - 点击"开始下载"并观察实时进度
+5. **查看历史** - 在下载历史中管理已下载的文件
+
+## 🏗️ 项目架构
 
 ```
 xdown/
 ├── src/
-│   ├── main.ts          # 主进程
-│   ├── preload.ts       # 预加载脚本
+│   ├── main.ts          # 主进程 - Electron 主要逻辑
+│   ├── preload.ts       # 预加载脚本 - 安全的 IPC 通信
 │   ├── renderer.tsx     # 渲染进程入口
 │   ├── App.tsx          # React 主组件
-│   ├── index.css        # 样式文件
-│   └── global.d.ts      # 全局类型定义
+│   ├── global.d.ts      # 全局类型定义
+│   └── index.css        # Tailwind CSS 样式
+├── docs/                # 项目文档
 ├── forge.config.ts      # Electron Forge 配置
 ├── vite.*.config.ts     # Vite 配置文件
-├── tsconfig.json        # TypeScript 配置
-├── .eslintrc.json       # ESLint 配置
-├── .prettierrc.json     # Prettier 配置
-└── package.json         # 项目配置
+└── 其他配置文件...
 ```
 
-## 使用说明
+## 🔧 核心功能实现
 
-1. **输入视频链接**: 在输入框中粘贴要下载的视频URL
-2. **获取视频信息**: 点击"获取信息"按钮查看视频详情
-3. **选择下载路径**: 点击文件夹图标选择保存位置
-4. **选择视频质量**: 从下拉菜单中选择所需的视频质量
-5. **开始下载**: 点击"开始下载"按钮开始下载
-6. **查看进度**: 实时查看下载进度和状态
-7. **管理历史**: 在下载历史中查看已完成的下载
+### 进度管理
 
-## 支持的平台
+- 阶段化进度跟踪（准备→视频→音频→合并→完成）
+- 基于权重的总体进度计算，避免进度倒退
+- 实时文件大小和下载速度显示
 
-- YouTube
-- Facebook
-- Twitter
-- Instagram
-- TikTok
-- 以及其他 yt-dlp 支持的平台
+### 音视频合并
 
-## 注意事项
+- 智能格式选择器：`bestvideo+bestaudio/best`
+- 自动使用 ffmpeg 进行音视频合并
+- 支持多种质量和格式选择
 
-- 请确保已安装 `yt-dlp` 工具
-- 下载视频时请遵守相关平台的使用条款
-- 建议在良好的网络环境下使用
+### 用户界面
 
-## 许可证
+- 响应式设计，支持不同窗口大小
+- 实时状态反馈和错误处理
+- 简洁直观的操作流程
 
-MIT License
-
-## 贡献
+## 🤝 贡献
 
 欢迎提交 Issue 和 Pull Request！
 
-## 更新日志
+1. Fork 项目
+2. 创建功能分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启 Pull Request
 
-### v1.0.0
+## 📄 许可证
 
-- 初始版本发布
-- 基于 Electron Forge 官方脚手架重构
-- 支持多平台视频下载
-- 现代化 UI 设计
-- 完整的 TypeScript 支持
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+## 🙏 致谢
+
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) - 强大的视频下载工具
+- [Electron](https://electronjs.org/) - 跨平台桌面应用框架
+- [React](https://reactjs.org/) - 用户界面库
+- [Tailwind CSS](https://tailwindcss.com/) - 实用优先的 CSS 框架
+
+---
+
+_如果这个项目对你有帮助，请给它一个 ⭐️！_

@@ -1,6 +1,7 @@
 // 全局类型定义
 interface ElectronAPI {
   selectDownloadPath: () => Promise<string | null>;
+  getDefaultDownloadPath: () => Promise<string>;
   downloadVideo: (options: {
     url: string;
     outputPath: string;
