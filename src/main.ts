@@ -17,6 +17,9 @@ if (squirrelStartup) {
   app.quit();
 }
 
+// 设置应用名称
+app.setName('VidyFlow');
+
 let mainWindow: BrowserWindow | null = null;
 
 const createWindow = (): void => {
@@ -26,6 +29,7 @@ const createWindow = (): void => {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    title: 'VidyFlow - 现代化视频下载器',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -34,6 +38,22 @@ const createWindow = (): void => {
     titleBarStyle: 'default',
     show: false,
     frame: true,
+    // 根据官方文档建议，为每个平台指定正确的图标格式
+    icon: (() => {
+      const iconDir =
+        process.env.NODE_ENV === 'development'
+          ? path.join(__dirname, '../../assets/icons')
+          : path.join(__dirname, '../assets/icons');
+
+      // 根据平台选择合适的图标格式
+      if (process.platform === 'darwin') {
+        return path.join(iconDir, 'icon.icns'); // macOS: .icns
+      } else if (process.platform === 'win32') {
+        return path.join(iconDir, 'icon.ico'); // Windows: .ico
+      } else {
+        return path.join(iconDir, 'icon.png'); // Linux: .png
+      }
+    })(),
   });
 
   // and load the index.html of the app.

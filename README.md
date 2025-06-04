@@ -1,8 +1,13 @@
 # VidyFlow - 现代化视频下载器
 
-一个基于 Electron + React + TypeScript 的现代化视频下载器，支持多平台视频下载，具有实时进度显示和智能音视频合并功能。
+<div align="center">
+  <img src="./public/logo-horizontal.svg" alt="VidyFlow Logo" width="400">
+  
+  <p>一个基于 Electron + React + TypeScript 的现代化视频下载器</p>
+  <p>支持多平台视频下载，具有实时进度显示和智能音视频合并功能</p>
+</div>
 
-![VidyFlow Interface](https://via.placeholder.com/800x500/3B82F6/ffffff?text=VidyFlow+Interface)
+---
 
 ## ✨ 特性
 

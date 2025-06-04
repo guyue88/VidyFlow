@@ -410,8 +410,11 @@ const App: React.FC = () => {
       <div className="bg-white shadow-sm border-b border-slate-200">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="text-center">
-            <h1 className="text-2xl font-bold text-slate-800">VidyFlow</h1>
-            <p className="text-sm text-slate-500 mt-1">视频下载神器</p>
+            <div className="flex items-center justify-center gap-3 mb-2">
+              <img src="/icon.svg" alt="VidyFlow Logo" className="w-8 h-8" />
+              <h1 className="text-2xl font-bold text-slate-800">VidyFlow</h1>
+            </div>
+            <p className="text-sm text-slate-500">现代化视频下载器</p>
           </div>
         </div>
       </div>

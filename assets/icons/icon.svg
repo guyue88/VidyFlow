@@ -1,0 +1,44 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="playGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F8FAFC;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E2E8F0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="flowGradient" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:0.4" />
+      <stop offset="50%" style="stop-color:#3B82F6;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#60A5FA;stop-opacity:0.3" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000000" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+  <!-- 主背景圆形 -->
+  <circle cx="256" cy="256" r="224" fill="url(#bgGradient)" filter="url(#shadow)"/>
+  <!-- 流动波纹效果 -->
+  <circle cx="256" cy="256" r="190" stroke="url(#flowGradient)" stroke-width="6" fill="none" opacity="0.6"/>
+  <circle cx="256" cy="256" r="150" stroke="url(#flowGradient)" stroke-width="4" fill="none" opacity="0.4"/>
+  <circle cx="256" cy="256" r="110" stroke="url(#flowGradient)" stroke-width="3" fill="none" opacity="0.3"/>
+  <!-- 流动线条效果 -->
+  <path d="M80 160 Q140 140 200 160 T320 160 T440 160" stroke="url(#flowGradient)" stroke-width="8" fill="none" opacity="0.7"/>
+  <path d="M80 200 Q160 180 240 200 T400 200" stroke="url(#flowGradient)" stroke-width="6" fill="none" opacity="0.5"/>
+  <path d="M80 220 Q120 210 160 220 T240 220 T320 220 T400 220" stroke="url(#flowGradient)" stroke-width="4" fill="none" opacity="0.4"/>
+  <path d="M80 352 Q140 372 200 352 T320 352 T440 352" stroke="url(#flowGradient)" stroke-width="8" fill="none" opacity="0.7"/>
+  <path d="M80 312 Q160 332 240 312 T400 312" stroke="url(#flowGradient)" stroke-width="6" fill="none" opacity="0.5"/>
+  <path d="M80 292 Q120 302 160 292 T240 292 T320 292 T400 292" stroke="url(#flowGradient)" stroke-width="4" fill="none" opacity="0.4"/>
+  <!-- 中央播放按钮 -->
+  <circle cx="256" cy="256" r="80" fill="url(#playGradient)" filter="url(#glow)"/>
+  <!-- 播放三角形 -->
+  <path d="M236 216 L236 296 L296 256 Z" fill="#2563EB"/>
+</svg>

@@ -1,0 +1,44 @@
+<svg width="320" height="80" viewBox="0 0 320 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#60A5FA;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#3B82F6;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="playGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#F8FAFC;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#E2E8F0;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="flowGradient" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" style="stop-color:#2563EB;stop-opacity:0.4" />
+      <stop offset="50%" style="stop-color:#3B82F6;stop-opacity:0.8" />
+      <stop offset="100%" style="stop-color:#60A5FA;stop-opacity:0.3" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <!-- 图标部分 -->
+  <!-- 主背景圆形 -->
+  <circle cx="40" cy="40" r="28" fill="url(#bgGradient)"/>
+  <!-- 流动波纹效果 -->
+  <circle cx="40" cy="40" r="23" stroke="url(#flowGradient)" stroke-width="1.5" fill="none" opacity="0.6"/>
+  <circle cx="40" cy="40" r="18" stroke="url(#flowGradient)" stroke-width="1" fill="none" opacity="0.4"/>
+  <!-- 流动线条效果 -->
+  <path d="M12 25 Q18 23 24 25 T36 25 T48 25 T60 25 T72 25" stroke="url(#flowGradient)" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <path d="M12 30 Q20 28 28 30 T44 30 T60 30 T76 30" stroke="url(#flowGradient)" stroke-width="1" fill="none" opacity="0.5"/>
+  <path d="M12 55 Q18 57 24 55 T36 55 T48 55 T60 55 T72 55" stroke="url(#flowGradient)" stroke-width="1.5" fill="none" opacity="0.7"/>
+  <path d="M12 50 Q20 52 28 50 T44 50 T60 50 T76 50" stroke="url(#flowGradient)" stroke-width="1" fill="none" opacity="0.5"/>
+  <!-- 中央播放按钮 -->
+  <circle cx="40" cy="40" r="10" fill="url(#playGradient)" filter="url(#glow)"/>
+  <!-- 播放三角形 -->
+  <path d="M37 35 L37 45 L45 40 Z" fill="#2563EB"/>
+  <!-- 文字部分 -->
+  <text x="100" y="30" font-family="Arial, sans-serif" font-size="24" font-weight="bold" fill="#1E40AF">Vidy</text>
+  <text x="100" y="55" font-family="Arial, sans-serif" font-size="24" font-weight="300" fill="#3B82F6">Flow</text>
+  <!-- 副标题 -->
+  <text x="200" y="45" font-family="Arial, sans-serif" font-size="14" font-weight="normal" fill="#64748B">现代化视频下载器</text>
+</svg>
